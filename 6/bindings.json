@@ -1,0 +1,1 @@
+{"a": "PrintCommand:a", "b": "PrintCommand:b", "c": "PrintCommand:c", "d": "PrintCommand:d", "ctrl++": "VolumeUpCommand", "ctrl+-": "VolumeDownCommand", "ctrl+p": "MediaPlayerCommand"}
