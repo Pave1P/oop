@@ -2,7 +2,6 @@ from dataclasses import dataclass, field, asdict
 from typing import Protocol, TypeVar, Generic, Sequence, Optional
 import json
 import os
-from hashlib import sha256
 
 # Тип-переменная
 T = TypeVar("T")
@@ -13,14 +12,9 @@ class User:
     id: int
     name: str
     login: str
-    password_hash: str = field(repr=False)
+    password: str = field(repr=False)
     email: Optional[str] = None
     address: Optional[str] = None
-
-    @staticmethod
-    def hash_password(password: str) -> str:
-        salt = "secure_salt_123"
-        return sha256((password + salt).encode()).hexdigest()
 
 # ========== Протоколы ==========
 class DataRepositoryProtocol(Protocol, Generic[T]):
@@ -122,7 +116,7 @@ class AuthService(AuthServiceProtocol):
     def sign_in(self, login: str, password: str) -> bool:
         try:
             user = self.repository.get_by_login(login)
-            if user and user.password_hash == User.hash_password(password):
+            if user and user.password == password:
                 self._current_user = user
                 return True
             return False
