@@ -19,7 +19,6 @@ class User:
 
     @staticmethod
     def hash_password(password: str) -> str:
-        """Хеширует пароль с солью"""
         salt = "secure_salt_123"
         return sha256((password + salt).encode()).hexdigest()
 
