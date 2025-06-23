@@ -4,12 +4,10 @@ import inspect
 
 T = TypeVar('T')
 
-
 class LifeStyle:
     PER_REQUEST = "PerRequest"
     SCOPED = "Scoped"
     SINGLETON = "Singleton"
-
 
 class Injector:
     def __init__(self):
@@ -23,7 +21,6 @@ class Injector:
                  implementation: Type[T] | Callable[..., T],
                  life_style: str = LifeStyle.PER_REQUEST,
                  params: Optional[Dict[str, Any]] = None) -> None:
-        """Регистрирует зависимость между интерфейсом и его реализацией"""
         if interface_type in self._registrations:
             raise ValueError(f"Тип {interface_type.__name__} уже зарегистрирован")
 
@@ -34,7 +31,6 @@ class Injector:
         }
 
     def get_instance(self, interface_type: Type[T]) -> T:
-        """Возвращает экземпляр класса по интерфейсу"""
         if interface_type not in self._registrations:
             raise ValueError(f"Тип {interface_type.__name__} не зарегистрирован")
 
@@ -43,7 +39,6 @@ class Injector:
         implementation = registration['implementation']
         params = registration['params']
 
-        # Обработка разных жизненных циклов
         if life_style == LifeStyle.SINGLETON:
             if interface_type not in self._singleton_instances:
                 self._singleton_instances[interface_type] = self._create_instance(implementation, params)
@@ -60,22 +55,18 @@ class Injector:
             return self._create_instance(implementation, params)
 
     def _create_instance(self, implementation: Type[T] | Callable[..., T], params: Dict[str, Any]) -> T:
-        """Создает экземпляр класса, рекурсивно разрешая его зависимости"""
         if callable(implementation) and not isinstance(implementation, type):
             # Фабричный метод
             return implementation(**params)
 
         try:
-            # Пытаемся получить аннотации конструктора
             if isinstance(implementation, type):
                 constructor_params = get_type_hints(implementation.__init__)
             else:
                 constructor_params = get_type_hints(implementation)
         except (TypeError, AttributeError):
-            # Если аннотаций нет, используем пустой словарь
             constructor_params = {}
 
-        # Собираем аргументы для конструктора
         args = {}
         for param_name, param_type in constructor_params.items():
             if param_name == 'return':
@@ -88,7 +79,6 @@ class Injector:
         return implementation(**args)
 
     def scope(self):
-        """Контекстный менеджер для работы с Scoped зависимостями"""
         return self.ScopeContext(self)
 
     class ScopeContext:
@@ -103,151 +93,80 @@ class Injector:
             self.injector._in_scope = False
             self.injector._scoped_instances.clear()
 
-
-# Интерфейсы
-class ILogger(ABC):
+# Новые интерфейсы и классы для демонстрации
+class IReportGenerator(ABC):
     @abstractmethod
-    def log(self, message: str) -> None:
+    def generate(self, data: dict) -> str:
         pass
 
+class ReportGenerator(IReportGenerator):
+    def __init__(self, template: str, header: str):
+        self.template = template
+        self.header = header
 
-class IDatabase(ABC):
+    def generate(self, data: dict) -> str:
+        return f"{self.header}\n{self.template.format(**data)}"
+
+def report_generator_factory(template: str, header: str) -> IReportGenerator:
+    """Фабричная функция для создания ReportGenerator"""
+    return ReportGenerator(template, header)
+
+class IDataProcessor(ABC):
     @abstractmethod
-    def query(self, sql: str) -> list:
+    def process(self, data: list) -> dict:
         pass
 
-
-class IEmailSender(ABC):
-    @abstractmethod
-    def send_email(self, to: str, subject: str, body: str) -> bool:
-        pass
-
-
-# Реализации ILogger
-class ConsoleLogger(ILogger):
-    def log(self, message: str) -> None:
-        print(f"[LOG] {message}")
-
-
-class FileLogger(ILogger):
-    def __init__(self, filename: str = "app.log"):
-        self.filename = filename
-
-    def log(self, message: str) -> None:
-        with open(self.filename, "a") as f:
-            f.write(f"[LOG] {message}\n")
-
-
-# Реализации IDatabase
-class SqlDatabase(IDatabase):
-    def __init__(self, connection_string: str, logger: ILogger):
-        self.connection_string = connection_string
+class DataProcessor(IDataProcessor):
+    def __init__(self, logger, threshold: int):
         self.logger = logger
-        self.logger.log(f"Подключение к базе данных: {connection_string}")
+        self.threshold = threshold
 
-    def query(self, sql: str) -> list:
-        self.logger.log(f"Выполнение запроса: {sql}")
-        # Имитация работы с БД
-        return [{"id": 1, "name": "Test"}]
+    def process(self, data: list) -> dict:
+        self.logger.log(f"Обработка данных с порогом {self.threshold}")
+        return {"result": sum(x for x in data if x > self.threshold)}
 
-
-class MockDatabase(IDatabase):
-    def query(self, sql: str) -> list:
-        # Всегда возвращает тестовые данные
-        return [{"id": 1, "name": "Mock"}]
-
-
-# Реализации IEmailSender
-class SmtpEmailSender(IEmailSender):
-    def __init__(self, smtp_server: str, logger: ILogger):
-        self.smtp_server = smtp_server
-        self.logger = logger
-
-    def send_email(self, to: str, subject: str, body: str) -> bool:
-        self.logger.log(f"Отправка email на {to} через {self.smtp_server}")
-        # Имитация отправки
-        return True
-
-
-class MockEmailSender(IEmailSender):
-    def send_email(self, to: str, subject: str, body: str) -> bool:
-        # Всегда возвращает успех в тестах
-        return True
-
-
-# Конфигурации
-def configure_development(injector: Injector):
-    """Конфигурация для разработки"""
-    injector.register(ILogger, ConsoleLogger, LifeStyle.SINGLETON)
-    injector.register(IDatabase, MockDatabase, LifeStyle.PER_REQUEST)
-    injector.register(IEmailSender, MockEmailSender, LifeStyle.PER_REQUEST)
-
-
-def configure_production(injector: Injector):
-    """Конфигурация для продакшена"""
-    injector.register(ILogger, FileLogger, LifeStyle.SINGLETON, {"filename": "production.log"})
-    injector.register(
-        IDatabase,
-        SqlDatabase,
-        LifeStyle.SCOPED,
-        {"connection_string": "Server=prod;Database=app;User=admin;Password=secret"}
-    )
-    injector.register(
-        IEmailSender,
-        SmtpEmailSender,
-        LifeStyle.PER_REQUEST,
-        {"smtp_server": "smtp.prod.com"}
-    )
-
-
-# Демонстрация работы
+# Дополненная демонстрация работы
 def demonstrate_injector():
-    print("=== Конфигурация для разработки ===")
-    dev_injector = Injector()
-    configure_development(dev_injector)
-
-    # Получаем экземпляры
-    logger1 = dev_injector.get_instance(ILogger)
-    logger2 = dev_injector.get_instance(ILogger)
-    print(f"Один и тот же логгер (Singleton)? {logger1 is logger2}")
-
-    db1 = dev_injector.get_instance(IDatabase)
-    db2 = dev_injector.get_instance(IDatabase)
-    print(f"Одна и та же БД (PerRequest)? {db1 is db2}")
-
-    # Использование зависимостей
-    logger1.log("Тестовое сообщение")
-    result = db1.query("SELECT * FROM users")
-    print(f"Результат запроса: {result}")
-
-    email_sender = dev_injector.get_instance(IEmailSender)
-    email_sender.send_email("test@example.com", "Тест", "Это тестовое письмо")
-
-    print("\n=== Конфигурация для продакшена ===")
-    prod_injector = Injector()
-    configure_production(prod_injector)
-
-    # Singleton логгер
-    prod_logger1 = prod_injector.get_instance(ILogger)
-    prod_logger2 = prod_injector.get_instance(ILogger)
-    print(f"Один и тот же логгер (Singleton)? {prod_logger1 is prod_logger2}")
-
-    # Scoped база данных
-    with prod_injector.scope():
-        scoped_db1 = prod_injector.get_instance(IDatabase)
-        scoped_db2 = prod_injector.get_instance(IDatabase)
-        print(f"Одна и та же БД в пределах Scope? {scoped_db1 is scoped_db2}")
-
-        result = scoped_db1.query("SELECT * FROM products")
-        print(f"Результат запроса: {result}")
-
-    # PerRequest email sender
-    email_sender1 = prod_injector.get_instance(IEmailSender)
-    email_sender2 = prod_injector.get_instance(IEmailSender)
-    print(f"Один и тот же email sender (PerRequest)? {email_sender1 is email_sender2}")
-
-    email_sender1.send_email("user@example.com", "Важное", "Важное сообщение")
-
+    print("=== Расширенная демонстрация ===")
+    injector = Injector()
+    
+    # Регистрация с параметрами
+    injector.register(
+        IReportGenerator,
+        ReportGenerator,
+        LifeStyle.PER_REQUEST,
+        {"template": "Данные: {value}", "header": "=== Отчет ==="}
+    )
+    
+    # Регистрация через фабрику
+    injector.register(
+        IReportGenerator,
+        report_generator_factory,
+        LifeStyle.SINGLETON,
+        {"template": "Фабричные данные: {value}", "header": "=== Фабричный отчет ==="}
+    )
+    
+    # Регистрация сложной зависимости с параметрами
+    injector.register(ILogger, ConsoleLogger, LifeStyle.SINGLETON)
+    injector.register(
+        IDataProcessor,
+        DataProcessor,
+        LifeStyle.PER_REQUEST,
+        {"threshold": 5}
+    )
+    
+    # Пример использования ReportGenerator с параметрами
+    report_gen1 = injector.get_instance(IReportGenerator)
+    print(report_gen1.generate({"value": "Тестовые данные"}))
+    
+    # Пример использования фабрики
+    report_gen2 = injector.get_instance(IReportGenerator)
+    print(report_gen2.generate({"value": "Данные из фабрики"}))
+    
+    # Пример использования DataProcessor с зависимостями и параметрами
+    processor = injector.get_instance(IDataProcessor)
+    result = processor.process([1, 6, 3, 8, 2])
+    print(f"Результат обработки: {result}")
 
 if __name__ == "__main__":
     demonstrate_injector()
