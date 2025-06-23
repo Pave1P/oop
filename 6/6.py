@@ -2,7 +2,6 @@ import json
 from abc import ABC, abstractmethod
 
 # ---------------- Паттерн Command ----------------
-
 class Command(ABC):
     @abstractmethod
     def execute(self): ...
@@ -16,7 +15,7 @@ class PrintCommand(Command):
 
     def execute(self):
         self.text_output.append(self.char)
-        print(self.char, end="")  # на экран
+        print(self.char, end="")
         self._log(self.char)
 
     def undo(self):
@@ -86,18 +85,17 @@ class MediaPlayerCommand(Command):
             f.write(text + "\n")
 
 # ---------------- Паттерн Memento ----------------
-
 class KeyboardMemento:
-    def __init__(self, bindings: dict):
-        self.bindings = bindings
+    def __init__(self, state: dict):
+        self.state = state  # Просто хранит состояние, ничего не зная о командах
 
     def to_json(self):
-        return json.dumps(self.bindings)
+        return json.dumps(self.state)
 
     @staticmethod
     def from_json(data: str):
-        bindings = json.loads(data)
-        return KeyboardMemento(bindings)
+        state = json.loads(data)
+        return KeyboardMemento(state)
 
 class StateSaver:
     def __init__(self, filepath="bindings.json"):
@@ -115,13 +113,12 @@ class StateSaver:
             return KeyboardMemento({})
 
 # ---------------- Основной класс Keyboard ----------------
-
 class Keyboard:
     def __init__(self):
-        self.bindings: dict[str, Command] = {}
-        self.undo_stack: list[Command] = []
-        self.redo_stack: list[Command] = []
-        self.text_output: list[str] = []
+        self.bindings = {}
+        self.undo_stack = []
+        self.redo_stack = []
+        self.text_output = []
         self.saver = StateSaver()
         self._load_state()
 
@@ -135,7 +132,6 @@ class Keyboard:
             print(f"No command bound to '{key}'")
             return
 
-        # создаём новый экземпляр команды печати
         if isinstance(cmd, PrintCommand):
             cmd = PrintCommand(self.text_output, cmd.char)
 
@@ -160,39 +156,43 @@ class Keyboard:
         self.undo_stack.append(cmd)
 
     def _save_state(self):
-        bindings_repr = {
-            key: (
-                f"PrintCommand:{cmd.char}" if isinstance(cmd, PrintCommand)
-                else type(cmd).__name__
-            )
-            for key, cmd in self.bindings.items()
+        state = {
+            'bindings': {
+                key: {
+                    'type': type(cmd).__name__,
+                    'char': cmd.char if isinstance(cmd, PrintCommand) else None
+                }
+                for key, cmd in self.bindings.items()
+            },
+            'text_output': self.text_output
         }
-        self.saver.save(KeyboardMemento(bindings_repr))
+        self.saver.save(KeyboardMemento(state))
 
     def _load_state(self):
         memento = self.saver.load()
-        for key, val in memento.bindings.items():
-            if val.startswith("PrintCommand:"):
-                char = val.split(":")[1]
-                self.bindings[key] = PrintCommand(self.text_output, char)
-            elif val == "VolumeUpCommand":
+        if not memento.state:
+            return
+
+        self.text_output = memento.state.get('text_output', [])
+        
+        for key, cmd_data in memento.state.get('bindings', {}).items():
+            cmd_type = cmd_data['type']
+            if cmd_type == "PrintCommand":
+                self.bindings[key] = PrintCommand(self.text_output, cmd_data['char'])
+            elif cmd_type == "VolumeUpCommand":
                 self.bindings[key] = VolumeUpCommand()
-            elif val == "VolumeDownCommand":
+            elif cmd_type == "VolumeDownCommand":
                 self.bindings[key] = VolumeDownCommand()
-            elif val == "MediaPlayerCommand":
+            elif cmd_type == "MediaPlayerCommand":
                 self.bindings[key] = MediaPlayerCommand()
 
 # ---------------- Точка входа ----------------
-
 def main():
     print("=== Виртуальная клавиатура ===")
     kb = Keyboard()
 
-    # Привязка клавиш (можно менять)
     kb.bind("a", PrintCommand(kb.text_output, "a"))
     kb.bind("b", PrintCommand(kb.text_output, "b"))
-    kb.bind("c", PrintCommand(kb.text_output, "c"))
-    kb.bind("d", PrintCommand(kb.text_output, "d"))
     kb.bind("ctrl++", VolumeUpCommand())
     kb.bind("ctrl+-", VolumeDownCommand())
     kb.bind("ctrl+p", MediaPlayerCommand())
