@@ -4,20 +4,32 @@ HEIGHT = 600
 
 class Point2d:
     def __init__(self, x: int, y: int):
-        if not (0 <= x <= WIDTH):
-            raise ValueError(f"x должно быть в диапазоне [0, {WIDTH}]")
-        if not (0 <= y <= HEIGHT):
-            raise ValueError(f"y должно быть в диапазоне [0, {HEIGHT}]")
-        self._x = x
-        self._y = y
+        self._x = 0
+        self._y = 0
+        self.x = x  # Используем сеттер для проверки при инициализации
+        self.y = y  # Используем сеттер для проверки при инициализации
 
     @property
     def x(self):
         return self._x
 
+    @x.setter
+    def x(self, value):
+        value = int(value)  # Приводим к целому числу
+        if not (0 <= value <= WIDTH):
+            raise ValueError(f"x должно быть в диапазоне [0, {WIDTH}]")
+        self._x = value
+
     @property
     def y(self):
         return self._y
+
+    @y.setter
+    def y(self, value):
+        value = int(value)  # Приводим к целому числу
+        if not (0 <= value <= HEIGHT):
+            raise ValueError(f"y должно быть в диапазоне [0, {HEIGHT}]")
+        self._y = value
 
     def __eq__(self, other):
         return isinstance(other, Point2d) and self.x == other.x and self.y == other.y
@@ -115,37 +127,36 @@ class Vector2d:
         return v1.x * v2.y - v1.y * v2.x
 
     def mixed_product(self, other1, other2):
-        # В 2D смешанное произведение равно 0
         return 0
 
 
-# Пример использования:
+# Пример использования с демонстрацией изменения координат точки
 if __name__ == "__main__":
-    p1 = Point2d(100, 150)
-    p2 = Point2d(300, 400)
-    print(p1)
-    print(p2)
-
+    # Создаем точку
+    p = Point2d(100, 150)
+    print(f"Исходная точка: {p}")
+    
+    # Меняем координаты
+    p.x = 200
+    p.y = 300
+    print(f"Точка после изменения: {p}")
+    
+    # Пробуем установить недопустимые значения
+    try:
+        p.x = -50
+    except ValueError as e:
+        print(f"Ошибка при изменении x: {e}")
+    
+    try:
+        p.y = 700
+    except ValueError as e:
+        print(f"Ошибка при изменении y: {e}")
+    
+    # Проверяем, что точка не изменилась после ошибочных попыток
+    print(f"Точка после ошибочных попыток: {p}")
+    
+    # Демонстрация работы с векторами
     v1 = Vector2d(3, 4)
-    v2 = Vector2d(p1, p2)
-
-    print(v1)
-    print(v2)
-    print(f"Модуль вектора v1: {abs(v1)}")
-    print(f"Сумма: {v1 + v2}")
-    print(f"Разность: {v2 - v1}")
-    print(f"Умножение на число: {v1 * 2}")
-    print(f"Деление на число: {v1 / 2}")
-
-    print(f"Скалярное произведение (метод): {v1.dot(v2)}")
-    print(f"Скалярное произведение (статический метод): {Vector2d.dot_product(v1, v2)}")
-
-    print(f"Векторное произведение (метод): {v1.cross(v2)}")
-    print(f"Векторное произведение (статический метод): {Vector2d.cross_product(v1, v2)}")
-
-    print(f"Смешанное произведение: {v1.mixed_product(v1, v2)}")
-
-    print(f"Индексация: x={v1[0]}, y={v1[1]}")
-    v1[0] = 7
-    print(f"Изменённый v1: {v1}")
-
+    v2 = Vector2d(p, Point2d(400, 450))
+    print(f"\nВектор v1: {v1}")
+    print(f"Вектор v2 (из точек): {v2}")
