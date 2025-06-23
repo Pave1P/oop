@@ -2,6 +2,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Protocol, TypeVar, Generic, Sequence, Optional
 import json
 import os
+from hashlib import sha256
 
 # Тип-переменная
 T = TypeVar("T")
@@ -12,9 +13,15 @@ class User:
     id: int
     name: str
     login: str
-    password: str = field(repr=False)
+    password_hash: str = field(repr=False)
     email: Optional[str] = None
     address: Optional[str] = None
+
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Хеширует пароль с солью"""
+        salt = "secure_salt_123"
+        return sha256((password + salt).encode()).hexdigest()
 
 # ========== Протоколы ==========
 class DataRepositoryProtocol(Protocol, Generic[T]):
@@ -32,7 +39,11 @@ class DataRepository(Generic[T]):
     def __init__(self, path: str):
         self.path = path
         self._items: list[dict] = []
-        self._load()
+        try:
+            self._load()
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Ошибка загрузки данных: {e}")
+            self._items = []
 
     def _load(self):
         if os.path.exists(self.path):
@@ -42,8 +53,11 @@ class DataRepository(Generic[T]):
             self._items = []
 
     def _save(self):
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(self._items, f, ensure_ascii=False, indent=2)
+        try:
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(self._items, f, ensure_ascii=False, indent=2)
+        except IOError as e:
+            print(f"Ошибка сохранения данных: {e}")
 
     def _serialize(self, obj: T) -> dict:
         return asdict(obj)
@@ -93,46 +107,32 @@ class UserRepository(DataRepository[User], UserRepositoryProtocol):
 
 # ========== Протокол авторизации ==========
 class AuthServiceProtocol(Protocol):
-    def sign_in(self, user: User) -> None: ...
-    def sign_out(self, user: User) -> None: ...
+    def sign_in(self, login: str, password: str) -> bool: ...
+    def sign_out(self) -> None: ...
     @property
     def is_authorized(self) -> bool: ...
     @property
     def current_user(self) -> Optional[User]: ...
 
-# ========== Сервис авторизации с автологином ==========
+# ========== Сервис авторизации ==========
 class AuthService(AuthServiceProtocol):
-    def __init__(self, repository: UserRepositoryProtocol, session_path: str = "session.json"):
+    def __init__(self, repository: UserRepositoryProtocol):
         self.repository = repository
-        self.session_path = session_path
         self._current_user: Optional[User] = None
-        self._load_session()
 
-    def _load_session(self):
-        if os.path.exists(self.session_path):
-            with open(self.session_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                login = data.get("login")
-                if login:
-                    user = self.repository.get_by_login(login)
-                    if user:
-                        self._current_user = user
+    def sign_in(self, login: str, password: str) -> bool:
+        try:
+            user = self.repository.get_by_login(login)
+            if user and user.password_hash == User.hash_password(password):
+                self._current_user = user
+                return True
+            return False
+        except Exception as e:
+            print(f"Ошибка при входе: {e}")
+            return False
 
-    def _save_session(self):
-        if self._current_user:
-            with open(self.session_path, "w", encoding="utf-8") as f:
-                json.dump({"login": self._current_user.login}, f)
-        elif os.path.exists(self.session_path):
-            os.remove(self.session_path)
-
-    def sign_in(self, user: User) -> None:
-        self._current_user = user
-        self._save_session()
-
-    def sign_out(self, user: User) -> None:
-        if self._current_user and self._current_user.id == user.id:
-            self._current_user = None
-            self._save_session()
+    def sign_out(self) -> None:
+        self._current_user = None
 
     @property
     def is_authorized(self) -> bool:
@@ -144,20 +144,22 @@ class AuthService(AuthServiceProtocol):
 
 # ========== Пример использования ==========
 def main():
-    repo = UserRepository("users.json")
-    auth = AuthService(repo)
+    try:
+        repo = UserRepository("users.json")
+        auth = AuthService(repo)
 
-    if auth.is_authorized:
-        print(f"Добро пожаловать обратно, {auth.current_user.name}!")
-    else:
-        login = input("Введите логин: ")
-        password = input("Введите пароль: ")
-        user = repo.get_by_login(login)
-        if user and user.password == password:
-            auth.sign_in(user)
-            print(f"Успешный вход. Привет, {user.name}!")
+        if auth.is_authorized:
+            print(f"Добро пожаловать обратно, {auth.current_user.name}!")
         else:
-            print("Ошибка: Неверный логин или пароль.")
+            login = input("Введите логин: ")
+            password = input("Введите пароль: ")
+            
+            if auth.sign_in(login, password):
+                print(f"Успешный вход. Привет, {auth.current_user.name}!")
+            else:
+                print("Ошибка: Неверный логин или пароль.")
+    except Exception as e:
+        print(f"Произошла ошибка: {e}")
 
 if __name__ == "__main__":
     main()
